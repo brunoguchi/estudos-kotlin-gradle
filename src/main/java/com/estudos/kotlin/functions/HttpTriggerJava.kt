@@ -14,9 +14,10 @@ import io.konform.validation.jsonschema.maximum
 import io.konform.validation.jsonschema.minLength
 import io.konform.validation.jsonschema.minimum
 import java.util.Optional
-import kotlinx.serialization.*
-import kotlinx.serialization.json.*
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
 
+@Serializable
 data class UserProfile(
     val fullName: String,
     val age: Int?
@@ -30,39 +31,48 @@ class HttpTriggerJava {
             name = "req",
             methods = [HttpMethod.GET, HttpMethod.POST],
             authLevel = AuthorizationLevel.FUNCTION
-        ) request: HttpRequestMessage<Optional<String?>?>,
+        ) request: HttpRequestMessage<String>,
         context: ExecutionContext
     ): HttpResponseMessage? {
-        context.getLogger().info("Java HTTP trigger processed a request.")
 
-        var body = request.getBody().toString()
-        val userObj = Json.decodeFromString<UserProfile>(body)
-        println(userObj)
+        try {
+            var body = request.getBody().toString()
+            val userObj = Json.decodeFromString<UserProfile>(body)
 
-        val validateUser = Validation<UserProfile> {
-            UserProfile::fullName {
-                minLength(2)
-                maxLength(100)
+            val validateUser = Validation<UserProfile> {
+                UserProfile::fullName {
+                    minLength(2)
+                    maxLength(100)
+                }
+
+                UserProfile::age ifPresent {
+                    minimum(0)
+                    maximum(150)
+                }
             }
 
-            UserProfile::age ifPresent {
-                minimum(0)
-                maximum(150)
+            val validationResult = validateUser(userObj)
+            val json = Json.encodeToString(UserProfile.serializer(), userObj)
+
+            val myObject = object {
+                val isValid: Boolean = validationResult.isValid
+                val content: String = json
             }
+
+            return request.createResponseBuilder(HttpStatus.OK).body(myObject).build()
+        } catch (e: Exception) {
+            return request.createResponseBuilder(HttpStatus.BAD_REQUEST).body("A wild bad request appears").build()
         }
-
-        val invalidUser = UserProfile("A", -1)
-        val validationResult = validateUser(invalidUser)
 
         // Parse query parameter
-        val query = request.getQueryParameters().get("name")
-        val name = request.getBody()!!.orElse(query)
-
-        if (name == null) {
-            return request.createResponseBuilder(HttpStatus.BAD_REQUEST)
-                .body("Please pass a name on the query string or in the request body").build()
-        } else {
-            return request.createResponseBuilder(HttpStatus.OK).body("Hello, $name").build()
-        }
+//        val query = request.getQueryParameters().get("name")
+//        val name = request.getBody()!!.orElse(query)
+//
+//        if (name == null) {
+//            return request.createResponseBuilder(HttpStatus.BAD_REQUEST)
+//                .body("Please pass a name on the query string or in the request body").build()
+//        } else {
+//            return request.createResponseBuilder(HttpStatus.OK).body("Hello, $name").build()
+//        }
     }
 }
